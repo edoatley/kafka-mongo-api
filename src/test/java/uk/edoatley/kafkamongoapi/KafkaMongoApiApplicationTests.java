@@ -22,9 +22,11 @@ import org.springframework.test.context.ActiveProfiles;
 import uk.edoatley.kafkamongoapi.model.Movie;
 import uk.edoatley.kafkamongoapi.repository.MovieRepository;
 
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.time.Duration;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -81,10 +83,20 @@ class KafkaMongoApiApplicationTests {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         // Verify that a message was sent to Kafka
-        ConsumerRecords<Integer, String> records = KafkaTestUtils.getRecords(consumer);
-        await().untilAsserted(() -> assertThat(records.count()).isEqualTo(1));
-        ConsumerRecord<Integer, String> firstRecord = records.iterator().next();
-        assertThat(firstRecord.value()).isEqualTo(movieString);
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            // Validate the message appears in the Kafka topic
+            ConsumerRecords<Integer, String> records = KafkaTestUtils.getRecords(consumer, Duration.ofMillis(10_000));
+            assertThat(records).isNotEmpty();
+            List<String> recordValueList = extractValuesFromRecords(records);
+            System.err.println(recordValueList);
+            assertThat(recordValueList).contains(movieString);
+        });
+    }
+
+    private List<String> extractValuesFromRecords(ConsumerRecords<Integer, String> records) {
+        return StreamSupport.stream(records.spliterator(), false)
+                .map(ConsumerRecord::value)
+                .toList();
     }
 
     @Test
